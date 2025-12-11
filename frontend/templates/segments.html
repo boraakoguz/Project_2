@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
         .dashboard-container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -59,9 +59,61 @@
         .btn-logout:hover {
             background: #cc0000;
         }
+        .btn-primary {
+            background: #3ECF8E;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        .btn-primary:hover {
+            background: #249361;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .filter-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .filter-item label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .filter-item input, .filter-item select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
+            margin-top: 20px;
         }
         th, td {
             padding: 12px;
@@ -72,7 +124,7 @@
             background: #f5f5f5;
             font-weight: 600;
         }
-        .btn-view {
+        .btn-view, .btn-small {
             background: #3ECF8E;
             color: white;
             border: none;
@@ -80,9 +132,119 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
+            margin: 2px;
         }
-        .btn-view:hover {
+        .btn-view:hover, .btn-small:hover {
             background: #249361;
+        }
+        .btn-delete {
+            background: #dc3545;
+        }
+        .btn-delete:hover {
+            background: #c82333;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 30px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .badge-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+        .tab-button {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+        }
+        .tab-button.active {
+            color: #3ECF8E;
+            border-bottom-color: #3ECF8E;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .customer-count {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: 600;
+            color: #0056b3;
         }
     </style>
 </head>
@@ -90,7 +252,7 @@
     <div class="dashboard-container">
         <div class="header">
             <div>
-                <h1>Customer Segments</h1>
+                <h1>Customer Segments & Campaign Builder</h1>
                 <p>{{ user_email }}</p>
             </div>
             <button class="btn-logout" onclick="logout()">Logout</button>
@@ -103,35 +265,382 @@
             <a href="/analytics" class="nav-link">Analytics</a>
         </div>
 
-        <div class="content-section">
-            <h2>Active Segments</h2>
-            <table id="segmentsTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Segment Name</th>
-                        <th>Description</th>
-                        <th>Created</th>
-                        <th>Updated</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="segmentsBody">
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 20px;">Loading...</td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Tab Navigation -->
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="switchTab('filter')">Filter Customers</button>
+            <button class="tab-button" onclick="switchTab('segments')">Manage Segments</button>
+        </div>
+
+        <!-- Filter Customers Tab -->
+        <div id="filterTab" class="tab-content active">
+            <div class="content-section">
+                <h2>Filter & Create Segment</h2>
+                <p style="color: #666; margin-bottom: 20px;">Filter customers by demographics and behavior to create targeted segments</p>
+                
+                <div class="filter-grid">
+                    <div class="filter-item">
+                        <label>Location</label>
+                        <input type="text" id="filterLocation" placeholder="e.g., New York, CA">
+                    </div>
+                    <div class="filter-item">
+                        <label>Industry</label>
+                        <input type="text" id="filterIndustry" placeholder="e.g., Technology">
+                    </div>
+                    <div class="filter-item">
+                        <label>Company Size</label>
+                        <select id="filterCompanySize">
+                            <option value="">All</option>
+                            <option value="1-10">1-10</option>
+                            <option value="10-50">10-50</option>
+                            <option value="50-200">50-200</option>
+                            <option value="200-500">200-500</option>
+                            <option value="500+">500+</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label>Min Age</label>
+                        <input type="number" id="filterMinAge" placeholder="e.g., 25">
+                    </div>
+                    <div class="filter-item">
+                        <label>Max Age</label>
+                        <input type="number" id="filterMaxAge" placeholder="e.g., 45">
+                    </div>
+                    <div class="filter-item">
+                        <label>Min Purchase Value ($)</label>
+                        <input type="number" id="filterMinPurchase" placeholder="e.g., 10000">
+                    </div>
+                    <div class="filter-item">
+                        <label>Max Purchase Value ($)</label>
+                        <input type="number" id="filterMaxPurchase" placeholder="e.g., 50000">
+                    </div>
+                    <div class="filter-item">
+                        <label>Min Engagement Score</label>
+                        <input type="number" id="filterMinEngagement" min="0" max="100" placeholder="0-100">
+                    </div>
+                    <div class="filter-item">
+                        <label>Max Engagement Score</label>
+                        <input type="number" id="filterMaxEngagement" min="0" max="100" placeholder="0-100">
+                    </div>
+                    <div class="filter-item">
+                        <label>Marketing Consent</label>
+                        <select id="filterConsent">
+                            <option value="">All</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="filter-actions">
+                    <button class="btn-primary" onclick="applyFilters()">Apply Filters</button>
+                    <button class="btn-secondary" onclick="clearFilters()">Clear Filters</button>
+                    <button class="btn-primary" onclick="openCreateSegmentModal()" style="margin-left: auto;">Create Segment from Filters</button>
+                </div>
+
+                <div id="customerCount" class="customer-count" style="display: none;">
+                    Found <span id="countNumber">0</span> customers matching filters
+                </div>
+
+                <table id="filteredCustomersTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Age</th>
+                            <th>Location</th>
+                            <th>Industry</th>
+                            <th>Purchase Value</th>
+                            <th>Engagement</th>
+                        </tr>
+                    </thead>
+                    <tbody id="filteredCustomersBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 20px; color: #666;">
+                                Apply filters to see customers
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Manage Segments Tab -->
+        <div id="segmentsTab" class="tab-content">
+            <div class="content-section">
+                <h2>Active Segments</h2>
+                <table id="segmentsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Segment Name</th>
+                            <th>Description</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="segmentsBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 20px;">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
+    <!-- Create Segment Modal -->
+    <div id="createSegmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Segment</h2>
+                <span class="close" onclick="closeCreateSegmentModal()">&times;</span>
+            </div>
+            <form id="createSegmentForm">
+                <div class="form-group">
+                    <label>Segment Name *</label>
+                    <input type="text" id="segmentName" required placeholder="e.g., Young Professionals Under 28">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="segmentDescription" placeholder="Describe this segment..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Applied Criteria</label>
+                    <textarea id="segmentCriteria" readonly style="background: #f5f5f5;"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="closeCreateSegmentModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Segment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- View Segment Modal -->
+    <div id="viewSegmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="viewSegmentTitle">Segment Details</h2>
+                <span class="close" onclick="closeViewSegmentModal()">&times;</span>
+            </div>
+            <div id="viewSegmentContent"></div>
+            <div style="margin-top: 20px;">
+                <button class="btn-primary" onclick="createCampaignFromSegment()">Create Campaign for this Segment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Campaign Modal -->
+    <div id="createCampaignModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create Campaign</h2>
+                <span class="close" onclick="closeCampaignModal()">&times;</span>
+            </div>
+            <form id="createCampaignForm">
+                <input type="hidden" id="campaignSegmentId">
+                <div class="form-group">
+                    <label>Campaign Name *</label>
+                    <input type="text" id="campaignName" required placeholder="e.g., Youth Marketing Campaign 2025">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="campaignDescription" placeholder="Campaign objectives and details..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Target Segment</label>
+                    <input type="text" id="campaignSegmentName" readonly style="background: #f5f5f5;">
+                </div>
+                <div class="form-group">
+                    <label>Campaign Type *</label>
+                    <select id="campaignType" required>
+                        <option value="">Select Type</option>
+                        <option value="email">Email</option>
+                        <option value="social">Social Media</option>
+                        <option value="sms">SMS</option>
+                        <option value="ad">Advertisement</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Start Date *</label>
+                    <input type="datetime-local" id="campaignStartDate" required>
+                </div>
+                <div class="form-group">
+                    <label>End Date</label>
+                    <input type="datetime-local" id="campaignEndDate">
+                </div>
+                <div class="form-group">
+                    <label>Budget ($)</label>
+                    <input type="number" id="campaignBudget" min="0" step="0.01" placeholder="0.00">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="closeCampaignModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Campaign</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        let currentFilters = {};
+        let currentSegmentId = null;
+
+        // Tab switching
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            if (tab === 'filter') {
+                document.querySelector('.tab-button:nth-child(1)').classList.add('active');
+                document.getElementById('filterTab').classList.add('active');
+            } else {
+                document.querySelector('.tab-button:nth-child(2)').classList.add('active');
+                document.getElementById('segmentsTab').classList.add('active');
+                loadSegments();
+            }
+        }
+
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
                 window.location.href = '/logout';
             }
         }
 
+        // Apply customer filters
+        async function applyFilters() {
+            const filters = {};
+            
+            if (document.getElementById('filterLocation').value) 
+                filters.location = document.getElementById('filterLocation').value;
+            if (document.getElementById('filterIndustry').value) 
+                filters.industry = document.getElementById('filterIndustry').value;
+            if (document.getElementById('filterCompanySize').value) 
+                filters.company_size = document.getElementById('filterCompanySize').value;
+            if (document.getElementById('filterMinAge').value) 
+                filters.min_age = document.getElementById('filterMinAge').value;
+            if (document.getElementById('filterMaxAge').value) 
+                filters.max_age = document.getElementById('filterMaxAge').value;
+            if (document.getElementById('filterMinPurchase').value) 
+                filters.min_purchase_value = document.getElementById('filterMinPurchase').value;
+            if (document.getElementById('filterMaxPurchase').value) 
+                filters.max_purchase_value = document.getElementById('filterMaxPurchase').value;
+            if (document.getElementById('filterMinEngagement').value) 
+                filters.min_engagement_score = document.getElementById('filterMinEngagement').value;
+            if (document.getElementById('filterMaxEngagement').value) 
+                filters.max_engagement_score = document.getElementById('filterMaxEngagement').value;
+            if (document.getElementById('filterConsent').value) 
+                filters.marketing_consent = document.getElementById('filterConsent').value;
+
+            currentFilters = filters;
+
+            try {
+                const queryString = new URLSearchParams(filters).toString();
+                const response = await fetch(`/api/customers?${queryString}`);
+                const data = await response.json();
+                
+                displayFilteredCustomers(data.customers);
+                
+                document.getElementById('customerCount').style.display = 'block';
+                document.getElementById('countNumber').textContent = data.count;
+            } catch (error) {
+                console.error('Error filtering customers:', error);
+                alert('Error loading customers. Please try again.');
+            }
+        }
+
+        function displayFilteredCustomers(customers) {
+            const tbody = document.getElementById('filteredCustomersBody');
+            
+            if (customers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #999;">No customers found matching these filters</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = customers.map(customer => `
+                <tr>
+                    <td>${customer.customer_id}</td>
+                    <td>${customer.first_name || ''} ${customer.last_name || ''}</td>
+                    <td>${customer.email}</td>
+                    <td>${customer.age || 'N/A'}</td>
+                    <td>${customer.location || 'N/A'}</td>
+                    <td>${customer.industry || 'N/A'}</td>
+                    <td>$${(customer.purchase_history_value || 0).toLocaleString()}</td>
+                    <td>${customer.engagement_score || 0}</td>
+                </tr>
+            `).join('');
+        }
+
+        function clearFilters() {
+            document.getElementById('filterLocation').value = '';
+            document.getElementById('filterIndustry').value = '';
+            document.getElementById('filterCompanySize').value = '';
+            document.getElementById('filterMinAge').value = '';
+            document.getElementById('filterMaxAge').value = '';
+            document.getElementById('filterMinPurchase').value = '';
+            document.getElementById('filterMaxPurchase').value = '';
+            document.getElementById('filterMinEngagement').value = '';
+            document.getElementById('filterMaxEngagement').value = '';
+            document.getElementById('filterConsent').value = '';
+            
+            currentFilters = {};
+            
+            document.getElementById('filteredCustomersBody').innerHTML = 
+                '<tr><td colspan="8" style="text-align: center; padding: 20px; color: #666;">Apply filters to see customers</td></tr>';
+            document.getElementById('customerCount').style.display = 'none';
+        }
+
+        // Segment creation
+        function openCreateSegmentModal() {
+            if (Object.keys(currentFilters).length === 0) {
+                alert('Please apply filters first before creating a segment');
+                return;
+            }
+            
+            document.getElementById('segmentCriteria').value = JSON.stringify(currentFilters, null, 2);
+            document.getElementById('createSegmentModal').style.display = 'block';
+        }
+
+        function closeCreateSegmentModal() {
+            document.getElementById('createSegmentModal').style.display = 'none';
+            document.getElementById('createSegmentForm').reset();
+        }
+
+        document.getElementById('createSegmentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const segmentData = {
+                segment_name: document.getElementById('segmentName').value,
+                description: document.getElementById('segmentDescription').value,
+                criteria: currentFilters
+            };
+
+            try {
+                const response = await fetch('/api/segments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(segmentData)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert('Segment created successfully!');
+                    closeCreateSegmentModal();
+                    switchTab('segments');
+                } else {
+                    alert('Error creating segment: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error creating segment:', error);
+                alert('Error creating segment. Please try again.');
+            }
+        });
+
+        // Load and display segments
         async function loadSegments() {
             try {
                 const response = await fetch('/api/segments');
@@ -140,38 +649,140 @@
                 const tbody = document.getElementById('segmentsBody');
                 
                 if (segments.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No segments found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No segments found</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = segments.map(segment => `
                     <tr>
                         <td>${segment.segment_id}</td>
-                        <td>${segment.segment_name}</td>
+                        <td><strong>${segment.segment_name}</strong></td>
                         <td>${segment.description || 'N/A'}</td>
                         <td>${new Date(segment.created_at).toLocaleDateString()}</td>
-                        <td>${new Date(segment.updated_at).toLocaleDateString()}</td>
                         <td>
-                            <button class="btn-view" onclick="viewSegment(${segment.segment_id})">View Details</button>
+                            <button class="btn-small" onclick="viewSegment(${segment.segment_id})">View & Create Campaign</button>
                         </td>
                     </tr>
                 `).join('');
             } catch (error) {
                 console.error('Error loading segments:', error);
                 document.getElementById('segmentsBody').innerHTML = 
-                    '<tr><td colspan="6" style="text-align: center; color: red;">Error loading segments</td></tr>';
+                    '<tr><td colspan="5" style="text-align: center; color: red;">Error loading segments</td></tr>';
             }
         }
 
         async function viewSegment(segmentId) {
+            currentSegmentId = segmentId;
+            
             try {
-                const response = await fetch(`/api/segments/${segmentId}`);
-                const segment = await response.json();
+                const [segmentResponse, customersResponse] = await Promise.all([
+                    fetch(`/api/segments/${segmentId}`),
+                    fetch(`/api/segments/${segmentId}/customers`)
+                ]);
                 
-                alert(`Segment: ${segment.segment_name}\n\nDescription: ${segment.description}\n\nCriteria: ${JSON.stringify(segment.criteria_json, null, 2)}`);
+                const segment = await segmentResponse.json();
+                const customers = await customersResponse.json();
+                
+                document.getElementById('viewSegmentTitle').textContent = segment.segment_name;
+                
+                const content = `
+                    <div style="margin-bottom: 15px;">
+                        <strong>Description:</strong><br>
+                        ${segment.description || 'No description'}
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <strong>Criteria:</strong><br>
+                        <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto;">${JSON.stringify(segment.criteria_json, null, 2)}</pre>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <strong>Total Customers:</strong> <span class="badge badge-info">${customers.length}</span>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <strong>Created:</strong> ${new Date(segment.created_at).toLocaleDateString()}
+                    </div>
+                `;
+                
+                document.getElementById('viewSegmentContent').innerHTML = content;
+                document.getElementById('viewSegmentModal').style.display = 'block';
             } catch (error) {
                 console.error('Error loading segment details:', error);
                 alert('Error loading segment details');
+            }
+        }
+
+        function closeViewSegmentModal() {
+            document.getElementById('viewSegmentModal').style.display = 'none';
+        }
+
+        // Campaign creation
+        async function createCampaignFromSegment() {
+            if (!currentSegmentId) return;
+            
+            try {
+                const response = await fetch(`/api/segments/${currentSegmentId}`);
+                const segment = await response.json();
+                
+                document.getElementById('campaignSegmentId').value = currentSegmentId;
+                document.getElementById('campaignSegmentName').value = segment.segment_name;
+                
+                // Set default start date to now
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                document.getElementById('campaignStartDate').value = now.toISOString().slice(0, 16);
+                
+                closeViewSegmentModal();
+                document.getElementById('createCampaignModal').style.display = 'block';
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error preparing campaign form');
+            }
+        }
+
+        function closeCampaignModal() {
+            document.getElementById('createCampaignModal').style.display = 'none';
+            document.getElementById('createCampaignForm').reset();
+        }
+
+        document.getElementById('createCampaignForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const campaignData = {
+                campaign_name: document.getElementById('campaignName').value,
+                description: document.getElementById('campaignDescription').value,
+                campaign_type: document.getElementById('campaignType').value,
+                target_segment_id: parseInt(document.getElementById('campaignSegmentId').value),
+                start_date: document.getElementById('campaignStartDate').value,
+                end_date: document.getElementById('campaignEndDate').value || null,
+                budget: parseFloat(document.getElementById('campaignBudget').value) || 0,
+                created_by: '{{ user_email }}'
+            };
+
+            try {
+                const response = await fetch('/api/campaigns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(campaignData)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Campaign created successfully! Campaign ID: ${result.campaign_id}`);
+                    closeCampaignModal();
+                    window.location.href = '/campaigns';
+                } else {
+                    alert('Error creating campaign: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Error creating campaign:', error);
+                alert('Error creating campaign. Please try again.');
+            }
+        });
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
             }
         }
 

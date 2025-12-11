@@ -5,6 +5,7 @@ Flask REST API for CRM Marketing Automation
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flasgger import Swagger
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime
@@ -18,6 +19,32 @@ from event_bus import EventPublisher, EventSubscriber, MarketingEventHandlers, s
 
 app = Flask(__name__)
 CORS(app)
+
+# Swagger configuration
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": 'apispec',
+            "route": '/api/docs/swagger.json',
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/api/docs"
+}
+
+swagger_template = {
+    "info": {
+        "title": "Marketing Automation API",
+        "description": "Auto-generated API documentation for Marketing Automation Module",
+        "version": "1.0.0"
+    }
+}
+
+swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
 # Database configuration
 DB_CONFIG = {
@@ -54,7 +81,14 @@ def get_service_instances(conn):
 
 @app.route('/api/segments', methods=['GET'])
 def get_segments():
-    """Get all active customer segments"""
+    """Get all active customer segments
+    ---
+    tags:
+      - Segments
+    responses:
+      200:
+        description: List of all active segments
+    """
     with get_db_connection() as conn:
         segmentation = SegmentationManager(conn)
         segments = segmentation.get_all_segments()
@@ -63,7 +97,29 @@ def get_segments():
 
 @app.route('/api/segments', methods=['POST'])
 def create_segment():
-    """Create a new customer segment"""
+    """Create a new customer segment
+    ---
+    tags:
+      - Segments
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - segment_name
+          properties:
+            segment_name:
+              type: string
+            description:
+              type: string
+            criteria:
+              type: object
+    responses:
+      201:
+        description: Segment created successfully
+    """
     data = request.json
     
     with get_db_connection() as conn:
@@ -138,6 +194,159 @@ def recategorize_all():
         segmentation = SegmentationManager(conn)
         results = segmentation.recategorize_all_customers()
         return jsonify(results), 200
+
+
+# ============================================================================
+# CUSTOMER API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/customers', methods=['GET'])
+def get_customers():
+    """Get customers with optional filtering
+    ---
+    tags:
+      - Customers
+    parameters:
+      - in: query
+        name: location
+        type: string
+        description: Filter by location (partial match)
+      - in: query
+        name: industry
+        type: string
+        description: Filter by industry (partial match)
+      - in: query
+        name: company_size
+        type: string
+        description: Company size (1-10, 10-50, 50-200, 200-500, 500+)
+      - in: query
+        name: min_age
+        type: integer
+        description: Minimum age
+      - in: query
+        name: max_age
+        type: integer
+        description: Maximum age
+      - in: query
+        name: min_purchase_value
+        type: number
+        description: Minimum purchase value
+      - in: query
+        name: max_purchase_value
+        type: number
+        description: Maximum purchase value
+      - in: query
+        name: min_engagement_score
+        type: integer
+        description: Minimum engagement score (0-100)
+      - in: query
+        name: max_engagement_score
+        type: integer
+        description: Maximum engagement score (0-100)
+      - in: query
+        name: marketing_consent
+        type: boolean
+        description: Filter by marketing consent
+      - in: query
+        name: limit
+        type: integer
+        default: 100
+        description: Number of results
+      - in: query
+        name: offset
+        type: integer
+        default: 0
+        description: Results offset
+    responses:
+      200:
+        description: Filtered customers list
+    """
+    filters = {}
+    
+    # Extract filter parameters from query string
+    if request.args.get('location'):
+        filters['location'] = request.args.get('location')
+    
+    if request.args.get('industry'):
+        filters['industry'] = request.args.get('industry')
+    
+    if request.args.get('company_size'):
+        filters['company_size'] = request.args.get('company_size')
+    
+    if request.args.get('min_age'):
+        filters['min_age'] = int(request.args.get('min_age'))
+    
+    if request.args.get('max_age'):
+        filters['max_age'] = int(request.args.get('max_age'))
+    
+    if request.args.get('min_purchase_value'):
+        filters['min_purchase_value'] = float(request.args.get('min_purchase_value'))
+    
+    if request.args.get('max_purchase_value'):
+        filters['max_purchase_value'] = float(request.args.get('max_purchase_value'))
+    
+    if request.args.get('min_engagement_score'):
+        filters['min_engagement_score'] = int(request.args.get('min_engagement_score'))
+    
+    if request.args.get('max_engagement_score'):
+        filters['max_engagement_score'] = int(request.args.get('max_engagement_score'))
+    
+    if request.args.get('marketing_consent'):
+        filters['marketing_consent'] = request.args.get('marketing_consent').lower() == 'true'
+    
+    limit = int(request.args.get('limit', 100))
+    offset = int(request.args.get('offset', 0))
+    
+    with get_db_connection() as conn:
+        segmentation = SegmentationManager(conn)
+        customers = segmentation.get_customers_filtered(filters, limit, offset)
+        return jsonify({
+            'customers': customers,
+            'count': len(customers),
+            'limit': limit,
+            'offset': offset
+        }), 200
+
+
+@app.route('/api/customers/search', methods=['GET'])
+def search_customers():
+    """Search customers by text across multiple fields
+    ---
+    tags:
+      - Customers
+    parameters:
+      - in: query
+        name: q
+        type: string
+        required: true
+        description: Search term
+      - in: query
+        name: fields
+        type: string
+        description: Comma-separated list of fields to search (email, first_name, last_name, location, industry)
+    responses:
+      200:
+        description: Search results
+      400:
+        description: Missing search term
+    """
+    search_term = request.args.get('q', '').strip()
+    
+    if not search_term:
+        return jsonify({'error': 'Search term (q) is required'}), 400
+    
+    search_fields = None
+    if request.args.get('fields'):
+        search_fields = [f.strip() for f in request.args.get('fields').split(',')]
+    
+    with get_db_connection() as conn:
+        segmentation = SegmentationManager(conn)
+        customers = segmentation.search_customers(search_term, search_fields)
+        return jsonify({
+            'customers': customers,
+            'count': len(customers),
+            'search_term': search_term
+        }), 200
 
 
 # ============================================================================
@@ -444,35 +653,19 @@ def health_check():
 
 @app.route('/', methods=['GET'])
 def index():
-    """API documentation"""
+    """API documentation - redirect to Swagger UI
+    ---
+    tags:
+      - Documentation
+    responses:
+      200:
+        description: API info with link to Swagger docs
+    """
     return jsonify({
         'module': 'Marketing Automation Module',
         'version': '1.0',
-        'endpoints': {
-            'segments': {
-                'GET /api/segments': 'Get all segments',
-                'POST /api/segments': 'Create segment',
-                'GET /api/segments/<id>': 'Get segment details',
-                'GET /api/segments/<id>/customers': 'Get customers in segment'
-            },
-            'campaigns': {
-                'POST /api/campaigns': 'Create campaign',
-                'GET /api/campaigns/<id>': 'Get campaign details',
-                'GET /api/campaigns/status/<status>': 'Get campaigns by status',
-                'PUT /api/campaigns/<id>/status': 'Update campaign status',
-                'POST /api/campaigns/<id>/execute': 'Execute campaign'
-            },
-            'analytics': {
-                'GET /api/analytics/dashboard': 'Get dashboard data',
-                'GET /api/analytics/campaigns/<id>/summary': 'Get campaign summary',
-                'POST /api/analytics/campaigns/<id>/roi': 'Calculate ROI',
-                'GET /api/analytics/attribution': 'Get attribution report'
-            },
-            'events': {
-                'POST /api/events/publish': 'Publish event',
-                'POST /api/events/process': 'Process events'
-            }
-        }
+        'documentation': '/api/docs',
+        'openapi_spec': '/api/docs/swagger.json'
     }), 200
 
 

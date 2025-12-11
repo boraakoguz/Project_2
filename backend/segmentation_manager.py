@@ -60,6 +60,131 @@ class SegmentationManager:
             )
             return cur.fetchall()
     
+    def get_customers_filtered(self, filters: Dict = None, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """
+        Retrieve customers with advanced filtering by demographics and behavior.
+        
+        Supported filters:
+        - location: str (partial match)
+        - industry: str (partial match)
+        - company_size: str (exact match)
+        - min_age: int
+        - max_age: int
+        - min_purchase_value: float
+        - max_purchase_value: float
+        - min_engagement_score: int
+        - max_engagement_score: int
+        - marketing_consent: bool
+        """
+        filters = filters or {}
+        
+        query = """
+            SELECT c.*, cp.purchase_history_value, cp.total_purchases, 
+                   cp.last_purchase_date, cp.avg_order_value, cp.engagement_score,
+                   cp.date_of_birth, cp.location, cp.industry, cp.company_size,
+                   EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth))::INTEGER as age
+            FROM customers c
+            LEFT JOIN customer_profiles cp ON c.customer_id = cp.customer_id
+            WHERE 1=1
+        """
+        
+        params = []
+        
+        # Location filter (case-insensitive partial match)
+        if filters.get('location'):
+            query += " AND cp.location ILIKE %s"
+            params.append(f"%{filters['location']}%")
+        
+        # Industry filter (case-insensitive partial match)
+        if filters.get('industry'):
+            query += " AND cp.industry ILIKE %s"
+            params.append(f"%{filters['industry']}%")
+        
+        # Company size filter (exact match)
+        if filters.get('company_size'):
+            query += " AND cp.company_size = %s"
+            params.append(filters['company_size'])
+        
+        # Age filters
+        if filters.get('min_age') is not None:
+            query += " AND EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth)) >= %s"
+            params.append(filters['min_age'])
+        
+        if filters.get('max_age') is not None:
+            query += " AND EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth)) <= %s"
+            params.append(filters['max_age'])
+        
+        # Purchase value filters
+        if filters.get('min_purchase_value') is not None:
+            query += " AND cp.purchase_history_value >= %s"
+            params.append(filters['min_purchase_value'])
+        
+        if filters.get('max_purchase_value') is not None:
+            query += " AND cp.purchase_history_value <= %s"
+            params.append(filters['max_purchase_value'])
+        
+        # Engagement score filters
+        if filters.get('min_engagement_score') is not None:
+            query += " AND cp.engagement_score >= %s"
+            params.append(filters['min_engagement_score'])
+        
+        if filters.get('max_engagement_score') is not None:
+            query += " AND cp.engagement_score <= %s"
+            params.append(filters['max_engagement_score'])
+        
+        # Marketing consent filter
+        if filters.get('marketing_consent') is not None:
+            query += " AND c.marketing_consent = %s"
+            params.append(filters['marketing_consent'])
+        
+        # Add ordering, limit, and offset
+        query += " ORDER BY c.customer_id LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params)
+            return cur.fetchall()
+    
+    def search_customers(self, search_term: str, search_fields: List[str] = None) -> List[Dict]:
+        """
+        Search customers by text across multiple fields.
+        
+        Args:
+            search_term: Text to search for
+            search_fields: List of fields to search in (email, first_name, last_name, location, industry)
+        """
+        search_fields = search_fields or ['email', 'first_name', 'last_name', 'location', 'industry']
+        
+        conditions = []
+        params = []
+        
+        for field in search_fields:
+            if field in ['email', 'first_name', 'last_name']:
+                conditions.append(f"c.{field} ILIKE %s")
+                params.append(f"%{search_term}%")
+            elif field in ['location', 'industry']:
+                conditions.append(f"cp.{field} ILIKE %s")
+                params.append(f"%{search_term}%")
+        
+        if not conditions:
+            return []
+        
+        query = f"""
+            SELECT c.*, cp.purchase_history_value, cp.total_purchases, 
+                   cp.engagement_score, cp.date_of_birth, cp.location, 
+                   cp.industry, cp.company_size,
+                   EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth))::INTEGER as age
+            FROM customers c
+            LEFT JOIN customer_profiles cp ON c.customer_id = cp.customer_id
+            WHERE ({' OR '.join(conditions)})
+            ORDER BY c.last_activity_at DESC NULLS LAST
+            LIMIT 50
+        """
+        
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params)
+            return cur.fetchall()
+    
     def assign_customer_to_segment(self, customer_id: int, segment_id: int, auto_assigned: bool = False):
         """Manually or automatically assign customer to segment"""
         with self.conn.cursor() as cur:
@@ -155,6 +280,40 @@ class SegmentationManager:
                 days_old = (datetime.now() - created_at).days
                 if days_old > criteria['created_within_days']:
                     return False
+        
+        # Check location (case-insensitive partial match)
+        if 'location' in criteria:
+            customer_location = (customer.get('location') or '').lower()
+            criteria_location = criteria['location'].lower()
+            if criteria_location not in customer_location:
+                return False
+        
+        # Check industry (case-insensitive partial match)
+        if 'industry' in criteria:
+            customer_industry = (customer.get('industry') or '').lower()
+            criteria_industry = criteria['industry'].lower()
+            if criteria_industry not in customer_industry:
+                return False
+        
+        # Check company size (exact match)
+        if 'company_size' in criteria:
+            if customer.get('company_size') != criteria['company_size']:
+                return False
+        
+        # Check age range
+        if 'min_age' in criteria or 'max_age' in criteria:
+            date_of_birth = customer.get('date_of_birth')
+            if date_of_birth:
+                age = (datetime.now().date() - date_of_birth).days // 365
+                
+                if 'min_age' in criteria and age < criteria['min_age']:
+                    return False
+                
+                if 'max_age' in criteria and age > criteria['max_age']:
+                    return False
+            else:
+                # If age criteria exists but no date_of_birth, exclude customer
+                return False
         
         return True
     

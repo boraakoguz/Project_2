@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS customer_profiles (
     last_purchase_date TIMESTAMP,
     avg_order_value DECIMAL(10,2),
     engagement_score INTEGER CHECK (engagement_score >= 0 AND engagement_score <= 100),
+    date_of_birth DATE,
     location VARCHAR(100),
     industry VARCHAR(100),
     company_size VARCHAR(50),
@@ -246,15 +247,15 @@ INSERT INTO customers (email, first_name, last_name, phone, marketing_consent, c
 ('fiona.davis@example.com', 'Fiona', 'Davis', '+1-555-0108', TRUE, CURRENT_TIMESTAMP - INTERVAL '75 days', CURRENT_TIMESTAMP - INTERVAL '10 days');
 
 -- Insert customer profiles
-INSERT INTO customer_profiles (customer_id, purchase_history_value, total_purchases, last_purchase_date, avg_order_value, engagement_score, location, industry, company_size) VALUES
-(1, 15000.00, 25, CURRENT_TIMESTAMP - INTERVAL '10 days', 600.00, 85, 'New York, NY', 'Technology', '50-200'),
-(2, 8500.00, 12, CURRENT_TIMESTAMP - INTERVAL '5 days', 708.33, 90, 'San Francisco, CA', 'Finance', '200-500'),
-(3, 12000.00, 18, CURRENT_TIMESTAMP - INTERVAL '100 days', 666.67, 45, 'Austin, TX', 'Healthcare', '10-50'),
-(4, 2500.00, 3, CURRENT_TIMESTAMP - INTERVAL '2 days', 833.33, 75, 'Seattle, WA', 'Retail', '1-10'),
-(5, 0.00, 0, NULL, 0.00, 60, 'Boston, MA', 'Education', '500+'),
-(6, 22000.00, 35, CURRENT_TIMESTAMP - INTERVAL '1 day', 628.57, 95, 'Chicago, IL', 'Manufacturing', '200-500'),
-(7, 1200.00, 2, CURRENT_TIMESTAMP - INTERVAL '3 days', 600.00, 80, 'Denver, CO', 'Technology', '10-50'),
-(8, 9500.00, 15, CURRENT_TIMESTAMP - INTERVAL '15 days', 633.33, 55, 'Miami, FL', 'Hospitality', '50-200');
+INSERT INTO customer_profiles (customer_id, purchase_history_value, total_purchases, last_purchase_date, avg_order_value, engagement_score, date_of_birth, location, industry, company_size) VALUES
+(1, 15000.00, 25, CURRENT_TIMESTAMP - INTERVAL '10 days', 600.00, 85, '1985-03-15', 'New York, NY', 'Technology', '50-200'),
+(2, 8500.00, 12, CURRENT_TIMESTAMP - INTERVAL '5 days', 708.33, 90, '1990-07-22', 'San Francisco, CA', 'Finance', '200-500'),
+(3, 12000.00, 18, CURRENT_TIMESTAMP - INTERVAL '100 days', 666.67, 45, '1978-11-08', 'Austin, TX', 'Healthcare', '10-50'),
+(4, 2500.00, 3, CURRENT_TIMESTAMP - INTERVAL '2 days', 833.33, 75, '1995-01-30', 'Seattle, WA', 'Retail', '1-10'),
+(5, 0.00, 0, NULL, 0.00, 60, '1988-09-12', 'Boston, MA', 'Education', '500+'),
+(6, 22000.00, 35, CURRENT_TIMESTAMP - INTERVAL '1 day', 628.57, 95, '1982-05-18', 'Chicago, IL', 'Manufacturing', '200-500'),
+(7, 1200.00, 2, CURRENT_TIMESTAMP - INTERVAL '3 days', 600.00, 80, '1992-12-25', 'Denver, CO', 'Technology', '10-50'),
+(8, 9500.00, 15, CURRENT_TIMESTAMP - INTERVAL '15 days', 633.33, 55, '1987-04-03', 'Miami, FL', 'Hospitality', '50-200');
 
 -- Insert customer interests
 INSERT INTO customer_interests (customer_id, product_category, interest_level, last_interaction_date, interaction_count) VALUES
