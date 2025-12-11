@@ -222,7 +222,7 @@
                     `).join('');
                 }
 
-                // Load segments
+                // Load segments with customer counts
                 const segmentsRes = await fetch('/api/segments');
                 const segments = await segmentsRes.json();
                 document.getElementById('totalSegments').textContent = segments.length;
@@ -231,11 +231,31 @@
                 if (segments.length === 0) {
                     segmentsBody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No segments found</td></tr>';
                 } else {
-                    segmentsBody.innerHTML = segments.slice(0, 5).map(segment => `
+                    // Fetch customer count for each segment
+                    const segmentsWithCounts = await Promise.all(
+                        segments.slice(0, 5).map(async (segment) => {
+                            try {
+                                const countRes = await fetch(`/api/segments/${segment.segment_id}/customers`);
+                                const customers = await countRes.json();
+                                return {
+                                    ...segment,
+                                    customer_count: customers.length || 0
+                                };
+                            } catch (error) {
+                                console.error(`Error loading customers for segment ${segment.segment_id}:`, error);
+                                return {
+                                    ...segment,
+                                    customer_count: 0
+                                };
+                            }
+                        })
+                    );
+
+                    segmentsBody.innerHTML = segmentsWithCounts.map(segment => `
                         <tr>
                             <td>${segment.segment_name}</td>
                             <td>${segment.description || 'N/A'}</td>
-                            <td>-</td>
+                            <td><strong style="color: #3ECF8E;">${segment.customer_count}</strong></td>
                             <td>${new Date(segment.created_at).toLocaleDateString()}</td>
                         </tr>
                     `).join('');

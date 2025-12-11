@@ -161,6 +161,13 @@ def campaigns_page():
     return render_template('campaigns.html', user_email=session.get('user'))
 
 
+@app.route('/campaign/<int:campaign_id>')
+@login_required
+def campaign_detail_page(campaign_id):
+    """Campaign detail page for viewing and executing campaigns"""
+    return render_template('campaign_detail.html', user_email=session.get('user'), campaign_id=campaign_id)
+
+
 @app.route('/segments')
 @login_required
 def segments_page():

@@ -46,6 +46,15 @@ swagger_template = {
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
+# Error handler for bad JSON requests
+@app.errorhandler(400)
+def handle_bad_request(e):
+    """Handle bad request errors, including JSON decode errors"""
+    if 'JSON' in str(e) or 'json' in str(e.description if hasattr(e, 'description') else ''):
+        # This is a JSON parsing error, but the request might still be valid
+        return jsonify({'error': 'Invalid JSON in request body'}), 400
+    return jsonify({'error': str(e)}), 400
+
 # Database configuration
 DB_CONFIG = {
     'dbname': os.getenv('DB_NAME', 'crm_marketing'),
@@ -70,7 +79,7 @@ def get_service_instances(conn):
     """Initialize service instances with database connection"""
     event_publisher = EventPublisher(conn)
     segmentation = SegmentationManager(conn)
-    campaign = CampaignManager(conn, event_publisher)
+    campaign = CampaignManager(conn, event_publisher, segmentation)
     analytics = MarketingAnalytics(conn)
     return segmentation, campaign, analytics, event_publisher
 
@@ -369,6 +378,7 @@ def create_campaign():
             start_date=datetime.fromisoformat(data['start_date']),
             end_date=datetime.fromisoformat(data['end_date']) if data.get('end_date') else None,
             budget=float(data.get('budget', 0)),
+            message_content=data.get('message_content', ''),
             created_by=data.get('created_by', 'system')
         )
         
@@ -406,6 +416,17 @@ def update_campaign_status(campaign_id):
         _, campaign_mgr, _, _ = get_service_instances(conn)
         campaign_mgr.update_campaign_status(campaign_id, data['status'])
         return jsonify({'message': 'Status updated successfully'}), 200
+
+
+@app.route('/api/campaigns/<int:campaign_id>/message', methods=['PUT'])
+def update_campaign_message(campaign_id):
+    """Update campaign message content"""
+    data = request.json
+    
+    with get_db_connection() as conn:
+        _, campaign_mgr, _, _ = get_service_instances(conn)
+        campaign_mgr.update_campaign_message(campaign_id, data['message_content'])
+        return jsonify({'message': 'Message updated successfully'}), 200
 
 
 @app.route('/api/campaigns/<int:campaign_id>/template', methods=['POST'])
@@ -459,11 +480,74 @@ def get_workflow_steps(campaign_id):
 
 @app.route('/api/campaigns/<int:campaign_id>/execute', methods=['POST'])
 def execute_campaign(campaign_id):
-    """Execute campaign - send to all customers in target segment"""
+    """Execute campaign - send to all customers in target segment
+    ---
+    tags:
+      - Campaigns
+    parameters:
+      - name: campaign_id
+        in: path
+        type: integer
+        required: true
+      - in: body
+        name: body
+        required: false
+        schema:
+          type: object
+          properties:
+            check_consent:
+              type: boolean
+              default: true
+    responses:
+      200:
+        description: Campaign execution results
+      400:
+        description: Execution error
+    """
+    try:
+        # Get optional parameters from request body if provided
+        data = request.get_json(silent=True, force=True) or {}
+        check_consent = data.get('check_consent', True)
+        
+        with get_db_connection() as conn:
+            _, campaign_mgr, _, _ = get_service_instances(conn)
+            results = campaign_mgr.execute_campaign(campaign_id, check_consent=check_consent)
+            
+            # Check if there was an error
+            if 'error' in results:
+                return jsonify(results), 400
+            
+            return jsonify(results), 200
+    except Exception as e:
+        print(f"Error in execute_campaign endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+
+@app.route('/api/campaigns/<int:campaign_id>/preview', methods=['GET'])
+def preview_campaign_message(campaign_id):
+    """Get campaign message with sample personalization"""
     with get_db_connection() as conn:
         _, campaign_mgr, _, _ = get_service_instances(conn)
-        results = campaign_mgr.execute_campaign(campaign_id, check_consent=True)
-        return jsonify(results), 200
+        campaign = campaign_mgr.get_campaign(campaign_id)
+        
+        if not campaign:
+            return jsonify({'error': 'Campaign not found'}), 404
+        
+        # Create sample personalization
+        message_content = campaign.get('message_content', '')
+        sample_message = message_content.replace('{name}', 'John Doe')
+        sample_message = sample_message.replace('{first_name}', 'John')
+        sample_message = sample_message.replace('{last_name}', 'Doe')
+        sample_message = sample_message.replace('{email}', 'john.doe@example.com')
+        
+        return jsonify({
+            'campaign_id': campaign_id,
+            'message_template': message_content,
+            'sample_message': sample_message,
+            'available_fields': ['{name}', '{first_name}', '{last_name}', '{email}']
+        }), 200
 
 
 # ============================================================================
@@ -566,6 +650,78 @@ def get_segment_performance(segment_id):
         _, _, analytics, _ = get_service_instances(conn)
         performance = analytics.get_segment_performance(segment_id)
         return jsonify(performance), 200
+
+
+@app.route('/api/analytics/campaigns/summary', methods=['GET'])
+def get_all_campaigns_summary():
+    """Get summary of all campaigns with revenue, segment info, and customer counts
+    ---
+    tags:
+      - Analytics
+    responses:
+      200:
+        description: List of all campaigns with performance metrics
+    """
+    with get_db_connection() as conn:
+        segmentation, campaign, analytics, _ = get_service_instances(conn)
+        
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get all campaigns with their metrics and segment info
+            cur.execute(
+                """
+                SELECT 
+                    c.campaign_id,
+                    c.campaign_name,
+                    c.campaign_type,
+                    c.status,
+                    c.target_segment_id,
+                    c.start_date,
+                    c.end_date,
+                    c.budget,
+                    s.segment_name,
+                    s.description as segment_description,
+                    COALESCE(SUM(cm.emails_sent), 0) as total_emails_sent,
+                    COALESCE(SUM(cm.emails_opened), 0) as total_emails_opened,
+                    COALESCE(SUM(cm.links_clicked), 0) as total_clicks,
+                    COALESCE(SUM(cm.conversions), 0) as total_conversions,
+                    COALESCE(SUM(cm.revenue_generated), 0) as total_revenue,
+                    COALESCE(SUM(cm.cost_incurred), 0) as total_cost,
+                    CASE 
+                        WHEN SUM(cm.emails_sent) > 0 
+                        THEN ROUND((SUM(cm.emails_opened)::numeric / SUM(cm.emails_sent) * 100), 2)
+                        ELSE 0 
+                    END as open_rate,
+                    CASE 
+                        WHEN SUM(cm.emails_sent) > 0 
+                        THEN ROUND((SUM(cm.conversions)::numeric / SUM(cm.emails_sent) * 100), 2)
+                        ELSE 0 
+                    END as conversion_rate
+                FROM campaigns c
+                LEFT JOIN segments s ON c.target_segment_id = s.segment_id
+                LEFT JOIN campaign_metrics cm ON c.campaign_id = cm.campaign_id
+                GROUP BY c.campaign_id, c.campaign_name, c.campaign_type, c.status, 
+                         c.target_segment_id, c.start_date, c.end_date, c.budget,
+                         s.segment_name, s.description
+                ORDER BY c.created_at DESC
+                """
+            )
+            campaigns = cur.fetchall()
+        
+        # Add customer count for each segment
+        result = []
+        for campaign in campaigns:
+            campaign_dict = dict(campaign)
+            if campaign_dict['target_segment_id']:
+                try:
+                    customer_count = segmentation.get_segment_count(campaign_dict['target_segment_id'])
+                    campaign_dict['active_customers'] = customer_count
+                except:
+                    campaign_dict['active_customers'] = 0
+            else:
+                campaign_dict['active_customers'] = 0
+            result.append(campaign_dict)
+        
+        return jsonify(result), 200
 
 
 @app.route('/api/analytics/customers/<int:customer_id>/interactions', methods=['POST'])

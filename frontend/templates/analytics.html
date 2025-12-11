@@ -161,43 +161,155 @@
                 const dashboardRes = await fetch('/api/analytics/dashboard');
                 const dashboardData = await dashboardRes.json();
                 
-                // Update stats (using mock data for now)
+                // Get totals from dashboard
+                const totals = dashboardData.totals || {};
+                
+                // Update stats with real data
                 document.getElementById('totalEmailsSent').textContent = 
-                    dashboardData.total_emails_sent || Math.floor(Math.random() * 10000);
-                document.getElementById('emailOpenRate').textContent = 
-                    ((Math.random() * 30 + 20).toFixed(1)) + '%';
-                document.getElementById('clickRate').textContent = 
-                    ((Math.random() * 10 + 5).toFixed(1)) + '%';
-                document.getElementById('conversionRate').textContent = 
-                    ((Math.random() * 5 + 2).toFixed(1)) + '%';
+                    (totals.total_emails_sent || 0).toLocaleString();
+                
+                // Calculate rates from totals
+                const emailsSent = totals.total_emails_sent || 0;
+                const emailsOpened = totals.total_emails_opened || 0;
+                const conversions = totals.total_conversions || 0;
+                
+                const openRate = emailsSent > 0 ? ((emailsOpened / emailsSent) * 100).toFixed(1) : '0.0';
+                document.getElementById('emailOpenRate').textContent = openRate + '%';
+                
+                // Click rate - we'll calculate from campaign summary
+                const clickRate = '...';
+                document.getElementById('clickRate').textContent = clickRate;
+                
+                const conversionRate = emailsSent > 0 ? ((conversions / emailsSent) * 100).toFixed(1) : '0.0';
+                document.getElementById('conversionRate').textContent = conversionRate + '%';
 
                 // Display performance metrics
+                const totalRevenue = totals.total_revenue || 0;
                 const metricsHtml = `
                     <div class="metric-row">
                         <span class="metric-label">Total Revenue Generated</span>
-                        <span class="metric-value">$${Math.floor(Math.random() * 50000 + 10000).toLocaleString()}</span>
+                        <span class="metric-value">$${totalRevenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Average Campaign ROI</span>
-                        <span class="metric-value">${(Math.random() * 300 + 100).toFixed(0)}%</span>
+                        <span class="metric-label">Active Campaigns</span>
+                        <span class="metric-value">${dashboardData.active_campaigns || 0}</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Active Customers</span>
-                        <span class="metric-value">${Math.floor(Math.random() * 5000 + 1000).toLocaleString()}</span>
+                        <span class="metric-label">Total Conversions</span>
+                        <span class="metric-value">${(conversions || 0).toLocaleString()}</span>
                     </div>
                     <div class="metric-row">
-                        <span class="metric-label">Unsubscribe Rate</span>
-                        <span class="metric-value">${(Math.random() * 2 + 0.5).toFixed(2)}%</span>
+                        <span class="metric-label">Emails Opened</span>
+                        <span class="metric-value">${(emailsOpened || 0).toLocaleString()}</span>
                     </div>
                 `;
                 
                 document.getElementById('performanceMetrics').innerHTML = metricsHtml;
 
+                // Load campaign performance summary
+                await loadCampaignSummary();
+
             } catch (error) {
                 console.error('Error loading analytics:', error);
                 document.getElementById('performanceMetrics').innerHTML = 
-                    '<p style="text-align: center; color: red;">Error loading analytics data</p>';
+                    '<p style="text-align: center; color: red;">Error loading analytics data. Please ensure backend is running.</p>';
             }
+        }
+
+        async function loadCampaignSummary() {
+            try {
+                const response = await fetch('/api/analytics/campaigns/summary');
+                const campaigns = await response.json();
+                
+                if (!campaigns || campaigns.length === 0) {
+                    document.getElementById('campaignSummary').innerHTML = 
+                        '<p style="text-align: center; padding: 20px;">No campaigns found</p>';
+                    return;
+                }
+
+                // Calculate click rate from all campaigns
+                let totalClicks = 0;
+                let totalOpened = 0;
+                campaigns.forEach(camp => {
+                    totalClicks += camp.total_clicks || 0;
+                    totalOpened += camp.total_emails_opened || 0;
+                });
+                const clickRate = totalOpened > 0 ? ((totalClicks / totalOpened) * 100).toFixed(1) : '0.0';
+                document.getElementById('clickRate').textContent = clickRate + '%';
+
+                // Build campaign summary table
+                let summaryHtml = `
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f5f5f5; text-align: left;">
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd;">Campaign Name</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd;">Type</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd;">Status</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd;">Segment</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd; text-align: right;">Active Customers</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd; text-align: right;">Revenue</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd; text-align: right;">Sent</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd; text-align: right;">Conversions</th>
+                                <th style="padding: 12px; border-bottom: 2px solid #ddd; text-align: right;">Conv. Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                campaigns.forEach(campaign => {
+                    const revenue = campaign.total_revenue || 0;
+                    const sent = campaign.total_emails_sent || 0;
+                    const conversions = campaign.total_conversions || 0;
+                    const convRate = campaign.conversion_rate || 0;
+                    const activeCustomers = campaign.active_customers || 0;
+                    
+                    summaryHtml += `
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 12px;"><strong>${campaign.campaign_name}</strong></td>
+                            <td style="padding: 12px;">${campaign.campaign_type}</td>
+                            <td style="padding: 12px;">
+                                <span style="padding: 4px 8px; border-radius: 4px; font-size: 12px; 
+                                      background: ${getStatusColor(campaign.status)}; color: white;">
+                                    ${campaign.status}
+                                </span>
+                            </td>
+                            <td style="padding: 12px;">${campaign.segment_name || 'N/A'}</td>
+                            <td style="padding: 12px; text-align: right; font-weight: bold; color: #3ECF8E;">
+                                ${activeCustomers.toLocaleString()}
+                            </td>
+                            <td style="padding: 12px; text-align: right; font-weight: bold; color: #249361;">
+                                $${revenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </td>
+                            <td style="padding: 12px; text-align: right;">${sent.toLocaleString()}</td>
+                            <td style="padding: 12px; text-align: right;">${conversions.toLocaleString()}</td>
+                            <td style="padding: 12px; text-align: right;">${convRate}%</td>
+                        </tr>
+                    `;
+                });
+
+                summaryHtml += `
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('campaignSummary').innerHTML = summaryHtml;
+
+            } catch (error) {
+                console.error('Error loading campaign summary:', error);
+                document.getElementById('campaignSummary').innerHTML = 
+                    '<p style="text-align: center; color: red;">Error loading campaign summary</p>';
+            }
+        }
+
+        function getStatusColor(status) {
+            const colors = {
+                'active': '#3ECF8E',
+                'completed': '#666',
+                'scheduled': '#FFA500',
+                'draft': '#999',
+                'paused': '#FF6B6B'
+            };
+            return colors[status] || '#999';
         }
 
         // Load analytics on page load

@@ -85,6 +85,21 @@
             background: #f5f5f5;
             font-weight: 600;
         }
+        .btn-view {
+            background: #3ECF8E;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+        }
+        .btn-view:hover {
+            background: #249361;
+        }
         .status-badge {
             padding: 4px 12px;
             border-radius: 12px;
@@ -154,11 +169,12 @@
                         <th>Start Date</th>
                         <th>End Date</th>
                         <th>Budget</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="campaignsBody">
                     <tr>
-                        <td colspan="8" style="text-align: center; padding: 20px;">Loading...</td>
+                        <td colspan="9" style="text-align: center; padding: 20px;">Loading...</td>
                     </tr>
                 </tbody>
             </table>
@@ -196,7 +212,7 @@
             const tbody = document.getElementById('campaignsBody');
             
             if (campaigns.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No campaigns found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No campaigns found</td></tr>';
                 return;
             }
 
@@ -210,6 +226,9 @@
                     <td>${new Date(campaign.start_date).toLocaleDateString()}</td>
                     <td>${campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : 'N/A'}</td>
                     <td>$${campaign.budget || 0}</td>
+                    <td>
+                        <a href="/campaign/${campaign.campaign_id}" class="btn-view">View & Execute</a>
+                    </td>
                 </tr>
             `).join('');
         }

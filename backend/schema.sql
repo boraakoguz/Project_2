@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     start_date TIMESTAMP,
     end_date TIMESTAMP,
     budget DECIMAL(12,2),
+    message_content TEXT, -- Default message template with placeholders like {name}, {email}, etc.
     created_by VARCHAR(100), -- Admin user ID
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -276,12 +277,12 @@ INSERT INTO segment_triggers (trigger_type, condition_json, action_type, action_
 ('LINK_CLICK', '{}', 'UPDATE_ENGAGEMENT', '{"engagement_boost": 3}', TRUE);
 
 -- Insert campaigns
-INSERT INTO campaigns (campaign_name, description, campaign_type, status, target_segment_id, start_date, end_date, budget, created_by) VALUES
-('Spring Sale 2024', 'Promote spring product discounts to high-value customers', 'email', 'completed', 1, CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP - INTERVAL '30 days', 5000.00, 'admin@marketing.com'),
-('Re-engagement Campaign', 'Win back at-risk customers with special offers', 'email', 'active', 2, CURRENT_TIMESTAMP - INTERVAL '10 days', CURRENT_TIMESTAMP + INTERVAL '20 days', 3000.00, 'admin@marketing.com'),
-('Welcome Series', 'Onboard new leads with educational content', 'email', 'active', 3, CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '60 days', 2000.00, 'marketing.team@marketing.com'),
-('VIP Exclusive Offer', 'Exclusive product launch for VIP customers', 'email', 'scheduled', 5, CURRENT_TIMESTAMP + INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '15 days', 8000.00, 'admin@marketing.com'),
-('Holiday Social Campaign', 'Social media engagement for engaged subscribers', 'social', 'draft', 4, CURRENT_TIMESTAMP + INTERVAL '30 days', CURRENT_TIMESTAMP + INTERVAL '45 days', 4500.00, 'social.team@marketing.com');
+INSERT INTO campaigns (campaign_name, description, campaign_type, status, target_segment_id, start_date, end_date, budget, message_content, created_by) VALUES
+('Spring Sale 2024', 'Promote spring product discounts to high-value customers', 'email', 'completed', 1, CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP - INTERVAL '30 days', 5000.00, 'Hi {first_name}! Spring is here and so are our best deals! Get 30% off on all products. As one of our valued customers, we wanted to give you early access. Shop now at example.com/spring-sale', 'admin@marketing.com'),
+('Re-engagement Campaign', 'Win back at-risk customers with special offers', 'email', 'active', 2, CURRENT_TIMESTAMP - INTERVAL '10 days', CURRENT_TIMESTAMP + INTERVAL '20 days', 3000.00, 'Hello {name}, we miss you! It has been a while since your last visit. Here is a special 40% discount code just for you. Use code: COMEBACK40 at checkout.', 'admin@marketing.com'),
+('Welcome Series', 'Onboard new leads with educational content', 'email', 'active', 3, CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '60 days', 2000.00, 'Welcome {first_name}! We are excited to have you join our community. Here are some resources to help you get started. Check your email at {email} for more details.', 'marketing.team@marketing.com'),
+('VIP Exclusive Offer', 'Exclusive product launch for VIP customers', 'email', 'scheduled', 5, CURRENT_TIMESTAMP + INTERVAL '5 days', CURRENT_TIMESTAMP + INTERVAL '15 days', 8000.00, 'Dear {first_name} {last_name}, as one of our VIP customers, you get exclusive early access to our newest product line launching soon. Stay tuned!', 'admin@marketing.com'),
+('Holiday Social Campaign', 'Social media engagement for engaged subscribers', 'social', 'draft', 4, CURRENT_TIMESTAMP + INTERVAL '30 days', CURRENT_TIMESTAMP + INTERVAL '45 days', 4500.00, 'Hey {name}! 🎉 Join us this holiday season! Share your favorite moments with us. Happy Holidays from all of us!', 'social.team@marketing.com');
 
 -- Insert campaign templates
 INSERT INTO campaign_templates (campaign_id, channel, subject_line, body_content, personalization_fields, external_asset_url) VALUES
