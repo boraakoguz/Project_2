@@ -46,6 +46,23 @@ body {
     animation: pulse 2s infinite;
 }
 
+/* Header brand styles (logo + title in header) */
+.header .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+.header .brand .header-logo {
+    width: 56px;
+    height: auto;
+    display: block;
+}
+@media (max-width: 480px) {
+    .header .brand .header-logo {
+        width: 44px;
+    }
+}
+
 @keyframes pulse {
     0%, 100% {
         transform: scale(1);
@@ -53,6 +70,22 @@ body {
     50% {
         transform: scale(1.05);
     }
+}
+
+.logo img {
+    width: 220px;
+    max-width: 260px;
+    height: auto;
+    display: block;
+    margin: 0 auto 12px;
+}
+
+@media (max-width: 480px) {
+    .logo img { width: 160px; max-width: 180px; }
+}
+
+.logo img {
+    font-size: 0;
 }
 
 .icon-large {

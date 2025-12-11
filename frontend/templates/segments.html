@@ -251,9 +251,12 @@
 <body>
     <div class="dashboard-container">
         <div class="header">
-            <div>
-                <h1>Customer Segments & Campaign Builder</h1>
-                <p>{{ user_email }}</p>
+            <div class="brand">
+                <img src="{{ url_for('static', filename='logo.png') }}" class="header-logo" alt="Unify CRM logo" onerror="this.style.display='none'">
+                <div>
+                    <h1>Customer Segments & Campaign Builder</h1>
+                    <p>{{ user_email }}</p>
+                </div>
             </div>
             <button class="btn-logout" onclick="logout()">Logout</button>
         </div>
