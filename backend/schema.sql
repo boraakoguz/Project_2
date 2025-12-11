@@ -60,22 +60,14 @@ CREATE TABLE IF NOT EXISTS segments (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Many-to-many: customers belong to multiple segments
-CREATE TABLE IF NOT EXISTS customer_segments (
-    customer_id INTEGER REFERENCES customers(customer_id) ON DELETE CASCADE,
-    segment_id INTEGER REFERENCES segments(segment_id) ON DELETE CASCADE,
-    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    auto_assigned BOOLEAN DEFAULT TRUE, -- TRUE if assigned by behavior trigger
-    PRIMARY KEY (customer_id, segment_id)
-);
-
--- Behavior triggers that automatically move customers between segments
+-- Behavior triggers that update customer attributes based on events
+-- Segment membership is calculated dynamically based on customer attributes
 CREATE TABLE IF NOT EXISTS segment_triggers (
     trigger_id SERIAL PRIMARY KEY,
-    segment_id INTEGER REFERENCES segments(segment_id) ON DELETE CASCADE,
     trigger_type VARCHAR(50) NOT NULL, -- e.g., 'PURCHASE', 'PAGE_VIEW', 'EMAIL_OPEN'
     condition_json JSONB, -- Trigger conditions
-    action VARCHAR(20) CHECK (action IN ('ADD', 'REMOVE')),
+    action_type VARCHAR(50), -- What to update: 'UPDATE_ENGAGEMENT', 'UPDATE_ACTIVITY', etc.
+    action_config_json JSONB, -- Configuration for the action
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -218,8 +210,6 @@ CREATE TABLE IF NOT EXISTS external_service_logs (
 
 CREATE INDEX idx_customer_email ON customers(email);
 CREATE INDEX idx_customer_consent ON customers(marketing_consent);
-CREATE INDEX idx_customer_segments_customer ON customer_segments(customer_id);
-CREATE INDEX idx_customer_segments_segment ON customer_segments(segment_id);
 CREATE INDEX idx_campaigns_status ON campaigns(status);
 CREATE INDEX idx_campaigns_segment ON campaigns(target_segment_id);
 CREATE INDEX idx_campaign_executions_campaign ON campaign_executions(campaign_id);
@@ -278,31 +268,12 @@ INSERT INTO segments (segment_name, description, criteria_json) VALUES
 ('Engaged Subscribers', 'High email engagement, regular opens and clicks', '{"min_engagement_score": 80, "email_open_rate": ">= 0.4"}'),
 ('VIP Customers', 'Top tier customers with exceptional value', '{"min_purchase_value": 20000, "min_engagement_score": 90}');
 
--- Insert customer-segment relationships
-INSERT INTO customer_segments (customer_id, segment_id, auto_assigned) VALUES
-(1, 1, TRUE),  -- John Doe -> High Value
-(1, 4, TRUE),  -- John Doe -> Engaged Subscribers
-(2, 1, TRUE),  -- Jane Smith -> High Value
-(2, 4, TRUE),  -- Jane Smith -> Engaged Subscribers
-(3, 1, TRUE),  -- Bob Johnson -> High Value
-(3, 2, TRUE),  -- Bob Johnson -> At Risk
-(4, 3, TRUE),  -- Alice Williams -> New Leads
-(4, 4, TRUE),  -- Alice Williams -> Engaged Subscribers
-(5, 3, TRUE),  -- Charlie Brown -> New Leads
-(6, 1, TRUE),  -- Diana Garcia -> High Value
-(6, 4, TRUE),  -- Diana Garcia -> Engaged Subscribers
-(6, 5, TRUE),  -- Diana Garcia -> VIP Customers
-(7, 3, TRUE),  -- Edward Martinez -> New Leads
-(8, 1, TRUE),  -- Fiona Davis -> High Value
-(8, 2, FALSE); -- Fiona Davis -> At Risk (manually assigned)
-
--- Insert segment triggers
-INSERT INTO segment_triggers (segment_id, trigger_type, condition_json, action, is_active) VALUES
-(1, 'PURCHASE', '{"min_purchase_value": 10000}', 'ADD', TRUE),
-(2, 'INACTIVITY', '{"days_since_last_activity": 90}', 'ADD', TRUE),
-(3, 'REGISTRATION', '{"days_since_registration": 30, "total_purchases": 0}', 'ADD', TRUE),
-(4, 'EMAIL_OPEN', '{"open_rate": 0.4, "min_emails_received": 5}', 'ADD', TRUE),
-(5, 'PURCHASE', '{"min_purchase_value": 20000}', 'ADD', TRUE);
+-- Insert segment triggers (update customer attributes based on behavior)
+INSERT INTO segment_triggers (trigger_type, condition_json, action_type, action_config_json, is_active) VALUES
+('PURCHASE', '{"min_purchase_amount": 100}', 'UPDATE_PURCHASE_HISTORY', '{"increment_total_purchases": true, "update_last_purchase": true}', TRUE),
+('EMAIL_OPEN', '{}', 'UPDATE_ENGAGEMENT', '{"engagement_boost": 2}', TRUE),
+('PAGE_VIEW', '{}', 'UPDATE_ACTIVITY', '{"update_last_activity": true}', TRUE),
+('LINK_CLICK', '{}', 'UPDATE_ENGAGEMENT', '{"engagement_boost": 3}', TRUE);
 
 -- Insert campaigns
 INSERT INTO campaigns (campaign_name, description, campaign_type, status, target_segment_id, start_date, end_date, budget, created_by) VALUES

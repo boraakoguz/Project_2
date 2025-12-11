@@ -32,6 +32,7 @@ services:
       DB_PORT: 5432
       FLASK_ENV: development
       FLASK_DEBUG: "True"
+      SEED_NUM_CUSTOMERS: 5000  # Number of customers to seed on first startup
     ports:
       - "5001:5001"
     depends_on:

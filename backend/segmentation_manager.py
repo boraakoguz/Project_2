@@ -46,19 +46,40 @@ class SegmentationManager:
             return cur.fetchone()[0]
     
     def get_customers_by_segment(self, segment_id: int) -> List[Dict]:
-        """Retrieve all customers in a specific segment"""
+        """
+        Dynamically retrieve all customers that match a segment's criteria.
+        Customers are not stored in the segment - they are calculated in real-time.
+        """
+        segment = self.get_segment_by_id(segment_id)
+        if not segment:
+            return []
+        
+        criteria = segment.get('criteria_json', {})
+        if not criteria:
+            return []
+        
+        # Get all customers and filter by segment criteria
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT c.*, cs.assigned_at, cs.auto_assigned
+                SELECT c.*, cp.purchase_history_value, cp.total_purchases, 
+                       cp.last_purchase_date, cp.avg_order_value, cp.engagement_score,
+                       cp.date_of_birth, cp.location, cp.industry, cp.company_size,
+                       EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth))::INTEGER as age
                 FROM customers c
-                JOIN customer_segments cs ON c.customer_id = cs.customer_id
-                WHERE cs.segment_id = %s
-                ORDER BY cs.assigned_at DESC
-                """,
-                (segment_id,)
+                LEFT JOIN customer_profiles cp ON c.customer_id = cp.customer_id
+                WHERE c.marketing_consent = TRUE
+                """
             )
-            return cur.fetchall()
+            all_customers = cur.fetchall()
+        
+        # Filter customers that match the segment criteria
+        matching_customers = [
+            customer for customer in all_customers 
+            if self._evaluate_criteria(customer, criteria)
+        ]
+        
+        return matching_customers
     
     def get_customers_filtered(self, filters: Dict = None, limit: int = 100, offset: int = 0) -> List[Dict]:
         """
@@ -185,38 +206,30 @@ class SegmentationManager:
             cur.execute(query, params)
             return cur.fetchall()
     
-    def assign_customer_to_segment(self, customer_id: int, segment_id: int, auto_assigned: bool = False):
-        """Manually or automatically assign customer to segment"""
-        with self.conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO customer_segments (customer_id, segment_id, auto_assigned)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (customer_id, segment_id) DO NOTHING
-                """,
-                (customer_id, segment_id, auto_assigned)
-            )
-            self.conn.commit()
+    def get_segment_count(self, segment_id: int) -> int:
+        """Get the count of customers that match a segment's criteria"""
+        customers = self.get_customers_by_segment(segment_id)
+        return len(customers)
     
-    def remove_customer_from_segment(self, customer_id: int, segment_id: int):
-        """Remove customer from a segment"""
-        with self.conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM customer_segments WHERE customer_id = %s AND segment_id = %s",
-                (customer_id, segment_id)
-            )
-            self.conn.commit()
+    def get_all_segments_with_counts(self) -> List[Dict]:
+        """Get all segments with their current customer counts"""
+        segments = self.get_all_segments()
+        for segment in segments:
+            segment['customer_count'] = self.get_segment_count(segment['segment_id'])
+        return segments
     
     def categorize_customer(self, customer_id: int) -> List[str]:
         """
-        Automatically categorize customer based on their profile and behavior.
+        Dynamically determine which segments a customer qualifies for based on their current profile.
+        Does NOT store the relationship - segments are calculated on-demand.
         Returns list of segment names they qualify for.
         """
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             # Get customer profile
             cur.execute(
                 """
-                SELECT c.*, cp.* 
+                SELECT c.*, cp.*,
+                       EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth))::INTEGER as age
                 FROM customers c
                 LEFT JOIN customer_profiles cp ON c.customer_id = cp.customer_id
                 WHERE c.customer_id = %s
@@ -236,12 +249,11 @@ class SegmentationManager:
                 criteria = segment.get('criteria_json', {})
                 if self._evaluate_criteria(customer, criteria):
                     qualifying_segments.append(segment['segment_name'])
-                    self.assign_customer_to_segment(customer_id, segment['segment_id'], auto_assigned=True)
             
             return qualifying_segments
     
     def _evaluate_criteria(self, customer: Dict, criteria: Dict) -> bool:
-        """Evaluate if customer meets segment criteria"""
+        """Evaluate if customer meets segment criteria based on their current attributes"""
         if not criteria:
             return False
         
@@ -251,10 +263,21 @@ class SegmentationManager:
             if purchase_value < criteria['min_purchase_value']:
                 return False
         
+        # Check maximum purchase value
+        if 'max_purchase_value' in criteria:
+            purchase_value = customer.get('purchase_history_value', 0) or 0
+            if purchase_value > criteria['max_purchase_value']:
+                return False
+        
         # Check engagement score
         if 'min_engagement_score' in criteria:
             engagement = customer.get('engagement_score', 0) or 0
             if engagement < criteria['min_engagement_score']:
+                return False
+        
+        if 'max_engagement_score' in criteria:
+            engagement = customer.get('engagement_score', 0) or 0
+            if engagement > criteria['max_engagement_score']:
                 return False
         
         # Check days since last activity (for "At Risk" segment)
@@ -271,6 +294,16 @@ class SegmentationManager:
         if 'total_purchases' in criteria:
             total = customer.get('total_purchases', 0) or 0
             if total != criteria['total_purchases']:
+                return False
+        
+        if 'min_total_purchases' in criteria:
+            total = customer.get('total_purchases', 0) or 0
+            if total < criteria['min_total_purchases']:
+                return False
+        
+        if 'max_total_purchases' in criteria:
+            total = customer.get('total_purchases', 0) or 0
+            if total > criteria['max_total_purchases']:
                 return False
         
         # Check account age
@@ -302,93 +335,133 @@ class SegmentationManager:
         
         # Check age range
         if 'min_age' in criteria or 'max_age' in criteria:
-            date_of_birth = customer.get('date_of_birth')
-            if date_of_birth:
-                age = (datetime.now().date() - date_of_birth).days // 365
-                
-                if 'min_age' in criteria and age < criteria['min_age']:
+            # Use pre-calculated age if available
+            age = customer.get('age')
+            if age is None:
+                date_of_birth = customer.get('date_of_birth')
+                if date_of_birth:
+                    age = (datetime.now().date() - date_of_birth).days // 365
+                else:
+                    # If age criteria exists but no date_of_birth, exclude customer
                     return False
-                
-                if 'max_age' in criteria and age > criteria['max_age']:
-                    return False
-            else:
-                # If age criteria exists but no date_of_birth, exclude customer
+            
+            if 'min_age' in criteria and age < criteria['min_age']:
+                return False
+            
+            if 'max_age' in criteria and age > criteria['max_age']:
+                return False
+        
+        # Check marketing consent
+        if 'marketing_consent' in criteria:
+            if customer.get('marketing_consent') != criteria['marketing_consent']:
                 return False
         
         return True
     
     def process_behavior_triggers(self, event_type: str, customer_id: int, metadata: Dict = None):
         """
-        Process behavior triggers to automatically move customers between segments.
-        Called when events like PURCHASE, PAGE_VIEW, EMAIL_OPEN occur.
+        Process behavior triggers - these can update customer profiles based on events.
+        Segment membership is calculated dynamically, not stored.
         """
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT st.*, s.segment_id, s.segment_name
-                FROM segment_triggers st
-                JOIN segments s ON st.segment_id = s.segment_id
-                WHERE st.trigger_type = %s AND st.is_active = TRUE
-                """,
-                (event_type,)
-            )
-            triggers = cur.fetchall()
-            
-            for trigger in triggers:
-                condition = trigger.get('condition_json', {})
-                if self._evaluate_trigger_condition(customer_id, condition, metadata):
-                    if trigger['action'] == 'ADD':
-                        self.assign_customer_to_segment(customer_id, trigger['segment_id'], auto_assigned=True)
-                    elif trigger['action'] == 'REMOVE':
-                        self.remove_customer_from_segment(customer_id, trigger['segment_id'])
-    
-    def _evaluate_trigger_condition(self, customer_id: int, condition: Dict, metadata: Dict) -> bool:
-        """Evaluate if trigger condition is met"""
-        if not condition:
-            return True  # No condition means always trigger
+        # Behavior triggers can update customer attributes which will affect segment membership
+        # Example: Update engagement score, last activity, purchase history
         
-        # Example: Check if purchase amount exceeds threshold
-        if 'min_purchase_amount' in condition and metadata:
-            amount = metadata.get('purchase_amount', 0)
-            return amount >= condition['min_purchase_amount']
+        if event_type == 'PURCHASE' and metadata:
+            # Update purchase-related fields
+            purchase_amount = metadata.get('purchase_amount', 0)
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE customer_profiles 
+                    SET purchase_history_value = purchase_history_value + %s,
+                        total_purchases = total_purchases + 1,
+                        last_purchase_date = CURRENT_TIMESTAMP
+                    WHERE customer_id = %s
+                    """,
+                    (purchase_amount, customer_id)
+                )
+                self.conn.commit()
         
-        return True
+        elif event_type == 'EMAIL_OPEN':
+            # Boost engagement score
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE customer_profiles 
+                    SET engagement_score = LEAST(engagement_score + 2, 100)
+                    WHERE customer_id = %s
+                    """,
+                    (customer_id,)
+                )
+                self.conn.commit()
+        
+        elif event_type == 'PAGE_VIEW':
+            # Update last activity
+            with self.conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE customers 
+                    SET last_activity_at = CURRENT_TIMESTAMP
+                    WHERE customer_id = %s
+                    """,
+                    (customer_id,)
+                )
+                self.conn.commit()
+        
+        # Segments are recalculated dynamically when needed
+        # No need to add/remove from customer_segments table
     
-    def recategorize_all_customers(self):
-        """Batch process: recategorize all customers (run periodically)"""
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT customer_id FROM customers WHERE marketing_consent = TRUE")
-            customers = cur.fetchall()
-            
-            results = {
-                'processed': 0,
-                'errors': 0
-            }
-            
-            for customer in customers:
-                try:
-                    self.categorize_customer(customer['customer_id'])
-                    results['processed'] += 1
-                except Exception as e:
-                    results['errors'] += 1
-                    print(f"Error categorizing customer {customer['customer_id']}: {e}")
-            
-            return results
+
+    
+    def get_segment_statistics(self) -> Dict:
+        """Get statistics for all segments including customer counts"""
+        segments = self.get_all_segments()
+        stats = {
+            'total_segments': len(segments),
+            'segments': []
+        }
+        
+        for segment in segments:
+            customer_count = self.get_segment_count(segment['segment_id'])
+            stats['segments'].append({
+                'segment_id': segment['segment_id'],
+                'segment_name': segment['segment_name'],
+                'description': segment['description'],
+                'customer_count': customer_count,
+                'criteria': segment.get('criteria_json', {})
+            })
+        
+        return stats
     
     def get_customer_segments(self, customer_id: int) -> List[Dict]:
-        """Get all segments a customer belongs to"""
+        """Get all segments a customer currently qualifies for (calculated dynamically)"""
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Get customer profile with age calculation
             cur.execute(
                 """
-                SELECT s.*, cs.assigned_at, cs.auto_assigned
-                FROM segments s
-                JOIN customer_segments cs ON s.segment_id = cs.segment_id
-                WHERE cs.customer_id = %s AND s.is_active = TRUE
-                ORDER BY cs.assigned_at DESC
+                SELECT c.*, cp.*,
+                       EXTRACT(YEAR FROM AGE(CURRENT_DATE, cp.date_of_birth))::INTEGER as age
+                FROM customers c
+                LEFT JOIN customer_profiles cp ON c.customer_id = cp.customer_id
+                WHERE c.customer_id = %s
                 """,
                 (customer_id,)
             )
-            return cur.fetchall()
+            customer = cur.fetchone()
+            
+            if not customer:
+                return []
+            
+            # Get all active segments and filter by criteria
+            segments = self.get_all_segments()
+            qualifying_segments = []
+            
+            for segment in segments:
+                criteria = segment.get('criteria_json', {})
+                if self._evaluate_criteria(customer, criteria):
+                    qualifying_segments.append(segment)
+            
+            return qualifying_segments
     
     def add_customer_interest(self, customer_id: int, product_category: str, interest_level: str = 'medium'):
         """Track customer product interests for personalization"""
