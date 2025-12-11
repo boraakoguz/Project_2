@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: crm_postgres
+    environment:
+      POSTGRES_DB: crm_marketing
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crm_network
+
+  backend:
+    build: ./backend
+    container_name: marketing_automation_backend
+    environment:
+      DB_NAME: crm_marketing
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      FLASK_ENV: development
+      FLASK_DEBUG: "True"
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    networks:
+      - crm_network
+    command: python3 marketing_automation.py
+
+  frontend:
+    build: ./frontend
+    container_name: marketing_automation_frontend
+    environment:
+      BACKEND_API_URL: http://backend:5001
+      FLASK_ENV: development
+      FLASK_DEBUG: "True"
+    ports:
+      - "8080:5000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+    networks:
+      - crm_network
+    command: python3 app.py
+
+volumes:
+  postgres_data:
+
+networks:
+  crm_network:
+    driver: bridge

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Two-Factor Authentication</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="icon-large"></div>
+            <h1 class="title">Two-Factor Authentication</h1>
+            <p class="subtitle">Choose your verification method</p>
+            
+            <div class="options-container">
+                <button class="option-card" onclick="send2FACode('SMS')">
+                    <div>
+                        <div class="option-title">Send code via SMS</div>
+                        <div class="option-subtitle">{{ phone }}</div>
+                    </div>
+                </button>
+                
+                <button class="option-card" onclick="send2FACode('Email')">
+                    <div>
+                        <div class="option-title">Send code via Email</div>
+                        <div class="option-subtitle">{{ backup_email }}</div>
+                    </div>
+                </button>
+            </div>
+            
+            <a href="/" class="link-primary">← Back to Login</a>
+        </div>
+    </div>
+    
+    <div id="codeModal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">Code sent via SMS!</h2>
+            <p class="modal-subtitle">Enter your verification code:</p>
+            
+            <div class="form-group">
+                <input type="text" id="codeInput" class="code-input" maxlength="6" placeholder="000000" autocomplete="off">
+            </div>
+            
+            <div id="modalError" class="error-message"></div>
+            
+            <button class="btn-primary" onclick="verify2FA()">Verify & Continue</button>
+            
+            <div class="demo-code-section">
+                <p class="demo-code-label">Demo:</p>
+                <div class="code-display" id="codeDisplay">000000</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        let currentCode = '';
+        
+        function send2FACode(method) {
+            fetch('/send-2fa-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ method: method })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentCode = data.code.toString();
+                    document.getElementById('modalTitle').textContent = `Code sent via ${method}!`;
+                    document.getElementById('codeDisplay').textContent = data.code;
+                    document.getElementById('codeInput').value = '';
+                    document.getElementById('modalError').textContent = '';
+                    document.getElementById('modalError').classList.remove('show');
+                    document.getElementById('codeModal').style.display = 'flex';
+                    document.getElementById('codeInput').focus();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+        
+        function verify2FA() {
+            const enteredCode = document.getElementById('codeInput').value.trim();
+            const errorDiv = document.getElementById('modalError');
+            
+            if (!enteredCode) {
+                errorDiv.textContent = 'Please enter the verification code';
+                errorDiv.classList.add('show');
+                return;
+            }
+            
+            if (enteredCode !== currentCode) {
+                errorDiv.textContent = 'Invalid code. Please try again.';
+                errorDiv.classList.add('show');
+                return;
+            }
+            
+            fetch('/verify-2fa', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ code: enteredCode })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/success';
+                } else {
+                    errorDiv.textContent = data.message || 'Verification failed';
+                    errorDiv.classList.add('show');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                errorDiv.textContent = 'An error occurred. Please try again.';
+                errorDiv.classList.add('show');
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('codeModal');
+            modal.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    verify2FA();
+                }
+            });
+        });
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('codeModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
